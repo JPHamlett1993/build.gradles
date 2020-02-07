@@ -1,0 +1,155 @@
+buildscript {
+    ext {
+        springBootVersion = '2.1.9.RELEASE'
+	}
+    dependencies{
+        classpath "org.springframework.cloud:spring-cloud-contract-gradle-plugin:2.1.5.RELEASE"
+        classpath "io.rest-assured:rest-assured:3.0.2"
+        classpath "io.rest-assured:spring-mock-mvc:3.0.2"
+    }
+}
+
+plugins {
+    id 'java'
+    id 'idea'
+    id 'maven-publish'
+    id "org.springframework.cloud.contract" version "2.1.5.RELEASE"
+    id 'org.springframework.boot' version '2.1.9.RELEASE'
+    id 'nebula.release' version '14.0.3'
+    id 'io.spring.dependency-management' version '1.0.6.RELEASE'
+    id 'com.gorylenko.gradle-git-properties' version '1.4.17'
+    id "org.asciidoctor.convert" version "1.5.3"
+}
+
+bootRun {
+    systemProperties = System.properties
+    jvmArgs += "-Dspring.output.ansi.enabled=ALWAYS"
+}
+
+bootJar {
+    baseName = project.name
+
+    dependsOn asciidoctor
+    from("${asciidoctor.outputDir}/html5") {
+        into 'static/docs'
+    }
+}
+
+group = 'com.acme.cds'
+
+sourceCompatibility = 11
+
+repositories {
+
+    maven { url "$artifactory_contexturl/$artifactory_repo" }
+}
+
+
+ext {
+    buildTime = new Date().format("yyyyMMddHHmm")
+    snippetsDir = file('./build/generated-snippets')
+    springRestdocsVersion = '2.0.3.RELEASE'
+    keycloakVersion = '4.8.3.Final'
+}
+
+dependencies {
+    compile('org.springframework.boot:spring-boot-starter-actuator')
+    compile('org.springframework.boot:spring-boot-starter-security')
+    compile('org.springframework.boot:spring-boot-starter-web')
+    compile('org.springframework.boot:spring-boot-starter-data-jpa')
+
+    compile('com.acme.common:acme-mvc-exception:2.0.4')
+    compile('org.apache.httpcomponents:httpclient')
+
+    compile "org.keycloak:keycloak-tomcat8-adapter:${keycloakVersion}"
+    compile 'com.acme.common:acme-keycloak-multi-realm-spring-security-starter:2.0.8'
+
+    compile group: 'net.sf.jt400', name: 'jt400', version: '9.7'
+
+    asciidoctor "org.springframework.restdocs:spring-restdocs-asciidoctor:${project.ext['springRestdocsVersion']}"
+
+    testCompile('org.springframework.boot:spring-boot-starter-test')
+    testCompile('org.springframework.restdocs:spring-restdocs-mockmvc')
+    testCompile 'org.springframework.security:spring-security-test'
+
+    //metrics
+    compile('com.acme.common:bluestem-metrics-spring-boot-starter:2.0.6')
+    compile 'io.micrometer:micrometer-registry-jmx'
+
+
+    // Logging
+    compile 'com.github.vital-software:sumo-logback:61f68e2049d1b02b61fdd497d67268b1382eb319'
+    compile 'com.sumologic.plugins.log4j:sumologic-log4j2-appender:1.0'
+    compile 'ch.qos.logback:logback-classic:1.2.3' // purposely upgrade logback from spring base version
+    compile 'ch.qos.logback:logback-core:1.2.3'    // purposely upgrade logback from spring base version
+
+    def junit4Version = '4.12'
+    def junitVintageVersion = '5.2.0'
+    def junitJupiterVersion = '5.2.0'
+    def junitPlatformVersion = '1.2.0'
+    testCompile("junit:junit:${junit4Version}")
+    testCompile("org.junit.jupiter:junit-jupiter-params:${junitJupiterVersion}")
+    testCompile("org.junit.jupiter:junit-jupiter-api:${junitJupiterVersion}")
+    testRuntime("org.junit.jupiter:junit-jupiter-engine:${junitJupiterVersion}")
+    testRuntime("org.junit.vintage:junit-vintage-engine:${junitVintageVersion}")
+    testRuntime("org.junit.platform:junit-platform-launcher:${junitPlatformVersion}")
+    testCompile 'org.mockito:mockito-junit-jupiter:2.18.3'  //mockito-core is implicitly added
+
+    testCompile 'cglib:cglib-nodep:3.2.5'
+    testCompile 'com.h2database:h2:1.4.196'
+    testCompile 'org.spockframework:spock-core:1.1-groovy-2.4'
+    testCompile 'org.codehaus.groovy:groovy-all:2.4.9'
+    testCompile group: 'org.springframework.cloud', name: 'spring-cloud-starter-contract-verifier', version: '2.2.1.RELEASE'
+    testCompile group: 'io.rest-assured', name: 'rest-assured', version: '3.0.2'
+    testCompile group: 'io.rest-assured', name: 'spring-mock-mvc', version: '3.0.2'
+    implementation 'junit:junit:4.12'
+    implementation 'junit:junit:4.12'
+
+
+    testCompile group: 'org.powermock', name: 'powermock-module-junit4', version: '2.0.4'
+    testCompile group: 'org.powermock', name: 'powermock-api-mockito2', version: '2.0.4'
+
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.keycloak.bom:keycloak-adapter-bom:${keycloakVersion}"
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:Hoxton.SR1"
+    }
+}
+
+springBoot {
+    buildInfo()
+}
+
+test {
+    systemProperty "spring.profiles.active", System.getProperty('spring.profiles.active')
+}
+
+
+asciidoctor {
+    dependsOn test
+    inputs.dir snippetsDir
+    attributes 'snippets': snippetsDir,
+            docinfo1: ''
+}
+
+test {
+    useJUnitPlatform()
+    systemProperty "spring.profiles.active", System.getProperty('spring.profiles.active')
+    outputs.dir snippetsDir
+}
+
+task integrationTest(type: Test) {
+    systemProperties = System.properties
+    useJUnit {
+        systemProperty "testprofile", "integrationtest"
+    }
+}
+
+
+contracts {
+    packageWithBaseClasses = 'com.acme.cds.acmecdshabdataaccessservice.contracts'
+    generatedTestSourcesDir = project.file('src/test/java/')
+}
+apply from: 'tests.gradle'
